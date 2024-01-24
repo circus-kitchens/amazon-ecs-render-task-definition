@@ -27,7 +27,8 @@ describe('Render task definition', () => {
             .mockReturnValueOnce('task-definition.json') // task-definition
             .mockReturnValueOnce('web')                  // container-name
             .mockReturnValueOnce('nginx:latest')         // image
-            .mockReturnValueOnce('FOO=bar\nHELLO=world'); // environment-variables
+            .mockReturnValueOnce('FOO=bar\nHELLO=world') // environment-variables
+            .mockReturnValueOnce('EXISTING_SECRET=arn:aws:ssm:region:0123456789:parameter/existingSecret');
 
         process.env = Object.assign(process.env, { GITHUB_WORKSPACE: __dirname });
         process.env = Object.assign(process.env, { RUNNER_TEMP: '/home/runner/work/_temp' });
@@ -52,6 +53,12 @@ describe('Render task definition', () => {
                         {
                             name: "DONT-TOUCH",
                             value: "me"
+                        }
+                    ],
+                    secrets: [
+                        {
+                            name: "EXISTING_SECRET",
+                            valueFrom: "arn:aws:ssm:region:0123456789:parameter/existingSecret"
                         }
                     ]
                 },
@@ -92,6 +99,12 @@ describe('Render task definition', () => {
                                 name: "HELLO",
                                 value: "world"
                             }
+                        ],
+                        secrets: [
+                            {
+                                name: "EXISTING_SECRET",
+                                valueFrom: "arn:aws:ssm:region:0123456789:parameter/existingSecret"
+                            },
                         ]
                     },
                     {
@@ -110,7 +123,8 @@ describe('Render task definition', () => {
             .mockReturnValueOnce('/hello/task-definition.json') // task-definition
             .mockReturnValueOnce('web')                  // container-name
             .mockReturnValueOnce('nginx:latest')         // image
-            .mockReturnValueOnce('EXAMPLE=here');        // environment-variables
+            .mockReturnValueOnce('EXAMPLE=here')        // environment-variables
+            .mockReturnValueOnce('SECRET=arn:aws:ssm:region:0123456789:parameter/secret'); 
         jest.mock('/hello/task-definition.json', () => ({
             family: 'task-def-family',
             containerDefinitions: [
@@ -142,6 +156,12 @@ describe('Render task definition', () => {
                                 name: "EXAMPLE",
                                 value: "here"
                             }
+                        ],
+                        secrets: [
+                            {
+                                name: "SECRET",
+                                valueFrom: 'arn:aws:ssm:region:0123456789:parameter/secret'
+                            }
                         ]
                     }
                 ]
@@ -157,6 +177,7 @@ describe('Render task definition', () => {
             .mockReturnValueOnce('web')
             .mockReturnValueOnce('nginx:latest')
             .mockReturnValueOnce('FOO=bar\nHELLO=world')
+            .mockReturnValueOnce('SECRET=a')
             .mockReturnValueOnce('awslogs')
             .mockReturnValueOnce(`awslogs-create-group=true\nawslogs-group=/ecs/web\nawslogs-region=us-east-1\nawslogs-stream-prefix=ecs`);
 
@@ -169,7 +190,6 @@ describe('Render task definition', () => {
             keep: true,
             discardDescriptor: true
         });
-
 
         expect(fs.writeFileSync).toHaveBeenNthCalledWith(1, 'new-task-def-file-name',
             JSON.stringify({
@@ -190,6 +210,16 @@ describe('Render task definition', () => {
                             {
                                 name: "HELLO",
                                 value: "world"
+                            }
+                        ],
+                        secrets: [
+                            {
+                                name: "EXISTING_SECRET",
+                                valueFrom: "arn:aws:ssm:region:0123456789:parameter/existingSecret"
+                            },
+                            {
+                                name: "SECRET",
+                                valueFrom: 'a'
                             }
                         ],
                         logConfiguration: {
@@ -231,6 +261,7 @@ describe('Render task definition', () => {
             .mockReturnValueOnce('web')
             .mockReturnValueOnce('nginx:latest')
             .mockReturnValueOnce('EXAMPLE=here')
+            .mockReturnValueOnce('SECRET=a')
             .mockReturnValueOnce('awslogs')
             .mockReturnValueOnce('awslogs-create-group=true\nawslogs-group=/ecs/web\nawslogs-region=us-east-1\nawslogs-stream-prefix=ecs')
             .mockReturnValueOnce('key1=value1\nkey2=value2');
@@ -270,6 +301,16 @@ describe('Render task definition', () => {
                                 value: "here"
                             }
                         ],
+                        secrets: [
+                            {
+                                "name": "EXISTING_SECRET",
+                                "valueFrom": "arn:aws:ssm:region:0123456789:parameter/existingSecret"
+                            },
+                            {
+                                "name": "SECRET",
+                                "valueFrom": "a",
+                            }
+                        ],
                         logConfiguration: {
                             logDriver: "awslogs",
                             options: {
@@ -300,6 +341,7 @@ describe('Render task definition', () => {
             .mockReturnValueOnce('web')
             .mockReturnValueOnce('nginx:latest')
             .mockReturnValueOnce('EXAMPLE=here')
+            .mockReturnValueOnce('SECRET=a')
             .mockReturnValueOnce('awslogs')
             .mockReturnValueOnce('awslogs-create-group=true\nawslogs-group=/ecs/web\nawslogs-region=us-east-1\nawslogs-stream-prefix=ecs')
             .mockReturnValueOnce('key1=update_value1\nkey2\nkey3=value3');
@@ -313,7 +355,10 @@ describe('Render task definition', () => {
                     dockerLabels : {
                         "key1":"value1",
                         "key2":"value2"
-                    }
+                    },
+                    secrets: {
+                        "SECRET": "a",
+                    },
                 }
             ]
         }), { virtual: true });
@@ -374,5 +419,18 @@ describe('Render task definition', () => {
         await run();
 
         expect(core.setFailed).toBeCalledWith('Invalid task definition: Could not find container definition with matching name');
+    });
+
+    test('error returned for malformatted secret string', async () => {
+        core.getInput = jest
+            .fn()
+            .mockReturnValueOnce('task-definition.json')
+            .mockReturnValueOnce('web')
+            .mockReturnValueOnce('nginx:latest')
+            .mockReturnValueOnce('EXAMPLE=here')
+            .mockReturnValueOnce('SECRET'); 
+        await run();
+
+        expect(core.setFailed).toBeCalledWith(expect.stringContaining(`Cannot parse the secret 'SECRET'`));
     });
 });
